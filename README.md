@@ -1,3 +1,6 @@
+This fixes the not saving issue + allows you to load custom save files
+
+
 # Load a Save
 
 1. Download `index.html` and replace your local copy.
