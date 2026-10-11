@@ -77,9 +77,9 @@
 	.save-row input { min-width: 0; box-sizing: border-box; flex: 1; padding: 5px 6px; background: #0b0b0e; border: 1px solid #444; border-radius: 4px; color: #ddd; font: 11px 'Segoe UI', sans-serif; }
 	#save-file { width: 100%; margin: 4px 0; color: #bbb; font: 11px 'Segoe UI', sans-serif; }
 	#save-list { max-height: 120px; overflow: auto; margin: 5px 0; border: 1px solid #333; border-radius: 4px; }
-	.save-entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 7px; border-bottom: 1px solid #292a2e; color: #aaa; font-size: 11px; }
+	.save-entry { display: grid; grid-template-columns: minmax(0, 1fr) 28px 52px; align-items: center; gap: 8px; padding: 5px 7px; border-bottom: 1px solid #292a2e; color: #aaa; font-size: 11px; }
 	.save-entry:last-child { border-bottom: 0; }
-	.save-entry button { padding: 3px 7px !important; }
+	.save-entry button { display: flex; width: 100%; height: 26px; box-sizing: border-box; align-items: center; justify-content: center; padding: 3px !important; }
 	#save-empty { padding: 7px; color: #888; font-size: 11px; }
 	#save-status { min-height: 16px; margin-top: 5px; color: #9ad693; font-size: 11px; }
 </style>
@@ -109,8 +109,8 @@
 </div>
 <div id="iso"><button id="iso-close" title="close">&times;</button><div id="iso-box">
 	<h2>This page is not cross-origin isolated</h2>
-	<p>The game needs <code>SharedArrayBuffer</code>, which browsers only allow on a <b>secure origin</b>. Plain <code>http:
-	<p>Open this page on your phone or another device using the address below:</p>
+	<p>The game requires <code>SharedArrayBuffer</code>, which browsers only enable on a secure, cross-origin-isolated page. Plain HTTP over your LAN does not provide that by default.</p>
+	<p>Open this address using HTTPS, localhost, or configure your browser to treat this local address as secure:</p>
 	<input id="iso-url" readonly>
 	<div class="row"><button id="iso-copy">Copy address</button><span id="iso-copy-msg" style="color:#7cc576"></span></div>
 	<p id="iso-hint"></p>
@@ -395,7 +395,7 @@ const refreshSaveList = async () => {
 				if (!c) { resolve(rows); return; }
 				const name = String(c.key).startsWith(prefix) ? String(c.key).slice(prefix.length) : '';
 				const match = name.match(/^SGTA5(\d{4})$/);
-				if (match) rows.push({ slot: Number(match[1]), size: c.value && c.value.data ? c.value.data.length : 0, mtime: c.value && c.value.mtime || 0 });
+				if (match) rows.push({ slot: Number(match[1]), data: c.value && c.value.data, size: c.value && c.value.data ? c.value.data.length : 0, mtime: c.value && c.value.mtime || 0 });
 				c.continue();
 			};
 			req.onerror = () => reject(req.error);
@@ -408,9 +408,18 @@ const refreshSaveList = async () => {
 			const row = document.createElement('div'); row.className = 'save-entry';
 			const info = document.createElement('span');
 			info.textContent = 'Slot ' + save.slot + ' · ' + (save.size / 1024).toFixed(0) + ' KB' + (save.mtime ? ' · ' + new Date(save.mtime * 1000).toLocaleDateString() : '');
+			const download = document.createElement('button'); download.type = 'button'; download.className = 'ghost'; download.setAttribute('aria-label', 'Download save'); download.title = 'Download save';
+			download.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14"/></svg>';
+			download.disabled = !save.data;
+			download.onclick = () => {
+				const blob = new Blob([save.data], { type: 'application/octet-stream' });
+				const url = URL.createObjectURL(blob), link = document.createElement('a');
+				link.href = url; link.download = 'SGTA5' + String(save.slot).padStart(4, '0');
+				link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+			};
 			const select = document.createElement('button'); select.type = 'button'; select.className = 'ghost'; select.textContent = 'Select';
 			select.onclick = () => { document.getElementById('save-slot').value = save.slot; document.getElementById('save-status').textContent = 'Slot ' + save.slot + ' selected.'; };
-			row.append(info, select); list.append(row);
+			row.append(info, download, select); list.append(row);
 		}
 	} catch (error) {
 		list.append(Object.assign(document.createElement('div'), { id: 'save-empty', textContent: 'Could not read stored saves: ' + (error && error.message || error) }));
@@ -601,7 +610,6 @@ function showIsolationPopup() {
 	document.getElementById('label').textContent = 'not cross-origin isolated: SharedArrayBuffer is unavailable';
 	document.getElementById('label').style.color = '#e66';
 	const popup = document.getElementById('iso');
-	if (!popup || popup.classList.contains('show')) return;
 	popup.classList.add('show');
 	const url = 'http://' + location.host + '/';
 	const input = document.getElementById('iso-url');
@@ -609,8 +617,8 @@ function showIsolationPopup() {
 	const hint = document.getElementById('iso-hint');
 	const lan = !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 	hint.textContent = lan
-		? 'This address only works on a device that treats it as a secure origin: serve over https, or in Chrome open chrome://flags/#unsafely-treat-insecure-origin-as-secure and add ' + url + ' (then relaunch).'
-		: 'Open this on another device only if the server is bound to the network (--host 0.0.0.0) and that device has a secure origin for it.';
+		? 'In Chrome, open chrome://flags/#unsafely-treat-insecure-origin-as-secure, add ' + url + ', enable the flag, then relaunch.'
+		: 'For another device, serve on the network and use HTTPS or a browser secure-origin setting.';
 	document.getElementById('iso-copy').onclick = async () => {
 		const msg = document.getElementById('iso-copy-msg');
 		try { await navigator.clipboard.writeText(url); }
