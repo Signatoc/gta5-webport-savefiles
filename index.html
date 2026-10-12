@@ -60,6 +60,11 @@
 	#gfx-toggle:active { background: #121317; }
 	#gfx-panel { width: 268px; max-height: calc(100vh - 120px); overflow: auto; margin-top: 6px; padding: 12px 14px; background: #17181c; border: 1px solid #333; border-radius: 8px; box-shadow: 0 12px 40px #000c; color: #ddd; }
 	#gfx-panel[hidden] { display: none; }
+	.menu-category { border-bottom: 1px solid #333; }
+	.menu-category:last-child { border-bottom: 0; }
+	.menu-category > summary { padding: 7px 2px; color: #ddd; font-weight: 600; cursor: pointer; }
+	.menu-category > summary::marker { color: #7cc576; }
+	.menu-category-content { padding: 3px 0 10px; }
 	.gfx-row { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
 	.gfx-row label { flex: 0 0 96px; color: #bbb; }
 	.gfx-row input[type=range] { flex: 1 1 auto; min-width: 0; height: 3px; margin: 6px 0; appearance: none; background: #333; border-radius: 2px; accent-color: #3a7d44; }
@@ -77,9 +82,10 @@
 	.save-row input { min-width: 0; box-sizing: border-box; flex: 1; padding: 5px 6px; background: #0b0b0e; border: 1px solid #444; border-radius: 4px; color: #ddd; font: 11px 'Segoe UI', sans-serif; }
 	#save-file { width: 100%; margin: 4px 0; color: #bbb; font: 11px 'Segoe UI', sans-serif; }
 	#save-list { max-height: 120px; overflow: auto; margin: 5px 0; border: 1px solid #333; border-radius: 4px; }
-	.save-entry { display: grid; grid-template-columns: minmax(0, 1fr) 28px 52px; align-items: center; gap: 8px; padding: 5px 7px; border-bottom: 1px solid #292a2e; color: #aaa; font-size: 11px; }
+	.save-entry { display: grid; grid-template-columns: minmax(0, 1fr) 28px 52px 28px; align-items: center; gap: 8px; padding: 5px 7px; border-bottom: 1px solid #292a2e; color: #aaa; font-size: 11px; }
 	.save-entry:last-child { border-bottom: 0; }
 	.save-entry button { display: flex; width: 100%; height: 26px; box-sizing: border-box; align-items: center; justify-content: center; padding: 3px !important; }
+	.save-entry button.delete-save { color: #e88; }
 	#save-empty { padding: 7px; color: #888; font-size: 11px; }
 	#save-status { min-height: 16px; margin-top: 5px; color: #9ad693; font-size: 11px; }
 </style>
@@ -92,9 +98,17 @@
 <div id="gfx">
 	<button id="gfx-toggle" type="button" title="Graphics settings" aria-label="Graphics settings"><span></span><span></span><span></span></button>
 	<div id="gfx-panel" hidden>
-		<div id="gfx-rows"></div>
-		<div class="btns"><button id="gfx-apply">Apply &amp; Reload</button><button id="gfx-reset" class="ghost">Reset</button><button id="gfx-close" class="ghost">Close</button></div>
-		<div class="btns"><button id="gfx-fps" class="ghost">Show FPS</button><button id="gfx-full" class="ghost">Fullscreen</button></div>
+		<details class="menu-category">
+			<summary>Graphics</summary>
+			<div class="menu-category-content">
+			<div id="gfx-rows"></div>
+			<div class="btns"><button id="gfx-apply">Apply &amp; Reload</button><button id="gfx-reset" class="ghost">Reset</button><button id="gfx-close" class="ghost">Close</button></div>
+			<div class="btns"><button id="gfx-fps" class="ghost">Show FPS</button><button id="gfx-full" class="ghost">Fullscreen</button></div>
+			</div>
+		</details>
+		<details class="menu-category">
+			<summary>Savegame</summary>
+			<div class="menu-category-content">
 		<div id="save-import">
 			<h3>Load custom save</h3>
 			<div class="save-row"><label>Stored saves</label><button id="save-refresh" type="button" class="ghost">Refresh</button></div>
@@ -105,6 +119,8 @@
 			<button id="save-load" type="button">Import &amp; Reload</button>
 			<div id="save-status" role="status"></div>
 		</div>
+			</div>
+		</details>
 	</div>
 </div>
 <div id="iso"><button id="iso-close" title="close">&times;</button><div id="iso-box">
@@ -122,7 +138,9 @@
 const q = new URLSearchParams(location.search);
 
 
+
 const BASE = '/b/8b0b5899ed'.charAt(0) === '_' ? '' : '/b/8b0b5899ed';
+const ENGINE_BUILD = 'online-demo-cleanup1';
 
 
 const remoteLog = q.get('log') === '1';
@@ -417,9 +435,52 @@ const refreshSaveList = async () => {
 				link.href = url; link.download = 'SGTA5' + String(save.slot).padStart(4, '0');
 				link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 			};
-			const select = document.createElement('button'); select.type = 'button'; select.className = 'ghost'; select.textContent = 'Select';
-			select.onclick = () => { document.getElementById('save-slot').value = save.slot; document.getElementById('save-status').textContent = 'Slot ' + save.slot + ' selected.'; };
-			row.append(info, download, select); list.append(row);
+			const load = document.createElement('button'); load.type = 'button'; load.className = 'ghost'; load.setAttribute('aria-label', 'Load save'); load.title = 'Load save';
+			load.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+			load.disabled = !save.data;
+			load.onclick = () => {
+				const path = '/userdata/Documents/Rockstar Games/' + titleDir + '/Default/SGTA5' + String(save.slot).padStart(4, '0');
+				try {
+					localStorage.setItem('gta5-load-save', path);
+					document.getElementById('save-status').textContent = 'Loading slot ' + save.slot + '… restarting the game.';
+					load.disabled = true;
+					setTimeout(() => {
+						const url = new URL(location.href);
+						url.searchParams.set('mode', 'story');
+						url.searchParams.delete('newgame');
+						location.href = url.toString();
+					}, 250);
+				} catch (error) {
+					document.getElementById('save-status').textContent = 'Could not load save: ' + (error && error.message || error);
+				}
+			};
+			const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ghost delete-save'; remove.setAttribute('aria-label', 'Delete save'); remove.title = 'Delete save';
+			remove.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18m-2 0-.9 14H5.9L5 6m4 0V4h6v2m-5 4v6m4-6v6"/></svg>';
+			remove.onclick = async () => {
+				remove.disabled = true;
+				const path = '/userdata/Documents/Rockstar Games/' + titleDir + '/Default/SGTA5' + String(save.slot).padStart(4, '0');
+				try {
+					const db = await new Promise((resolve, reject) => {
+						const req = indexedDB.open('gta5-userdata', 1);
+						req.onsuccess = () => resolve(req.result);
+						req.onerror = () => reject(req.error);
+					});
+					await new Promise((resolve, reject) => {
+						const tx = db.transaction('files', 'readwrite');
+						tx.objectStore('files').delete(path);
+						tx.oncomplete = resolve;
+						tx.onerror = () => reject(tx.error);
+						tx.onabort = () => reject(tx.error || new Error('Delete was cancelled'));
+					});
+					db.close();
+					document.getElementById('save-status').textContent = 'Deleted slot ' + save.slot + '.';
+					refreshSaveList();
+				} catch (error) {
+					remove.disabled = false;
+					document.getElementById('save-status').textContent = 'Could not delete save: ' + (error && error.message || error);
+				}
+			};
+			row.append(info, download, load, remove); list.append(row);
 		}
 	} catch (error) {
 		list.append(Object.assign(document.createElement('div'), { id: 'save-empty', textContent: 'Could not read stored saves: ' + (error && error.message || error) }));
@@ -682,19 +743,27 @@ const gfxArgs = () => GFX.flatMap(([key, , min, max, def]) => {
 	if (v === def && raw !== null && key !== 'frameLimit') return [];
 	return ['-' + key + '=' + gfxToEngine(key, v)];
 });
-const worker = new Worker(BASE + '/loader.js');
+const worker = new Worker(BASE + '/loader.js?v=' + ENGINE_BUILD);
+
+let loadSavePath = '';
+try { loadSavePath = localStorage.getItem('gta5-load-save') || ''; localStorage.removeItem('gta5-load-save'); } catch (e) { loadSavePath = ''; }
+
 	worker.onmessage = (ev) => {
 		if (ev.data.hud) hud.textContent = ev.data.hud;
 		if (ev.data.input) installInput(ev.data.input.memory, ev.data.input.block);
 		if (ev.data.audio) { audioPending = ev.data.audio; tryStartAudio(); }
+
 	};
-	worker.onerror = (e) => { hud.textContent = 'worker error: ' + e.message; };
+	worker.onerror = (e) => {
+		hud.textContent = 'worker error: ' + e.message;
+	};
 	worker.postMessage({
 		canvas: offscreen,
 		base: BASE,
 		args: ['-rootdir=/game/', ...(q.get('nogpu') ? [] : ['-wgpu']), '-nodisplaycalibration', '-noSocialClub', '-pc:nosocialclub',  '-nonetwork', '-output', '-width=' + startSize[0], '-height=' + startSize[1], '-forceResolution', ...LOG_ARGS, ...ENGINE_ARGS,
 		 ...(cores <= 2 ? ['-numCores=' + cores] : []), ...(lowMemory ? LOW_ARGS : []), ...gfxArgs(), ...(q.get('args') || '').split(',').filter(Boolean)],
 		shotEvery: +(q.get('shot') || 0),
+		loadSavePath,
 		shotRt: q.get('shotrt') === '1',
 		noHints: q.get('nohints') === '1',
 		noPack: q.get('nopack') === '1',
